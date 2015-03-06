@@ -1,0 +1,98 @@
+<?php
+/**
+ * Rules based on pattern
+ * @index 1 pattern to use
+ * @index 2 Message to display
+ * @index 3 log level 1-3 (1-CRITICAL / 2-WARNING / 3-NOTICE)
+ **/
+
+/**
+ * LEVEL 1
+ **/
+// Debug function var_dump
+$l_aRule[] = array('pattern'=> '&var_dump\(&',
+                   'message'=> 'Debug function var_dump detected',
+                   'level'  => 1) ;
+// Debug function var_export
+$l_aRule[] = array('pattern'=> '&var_export\(&',
+                   'message'=> 'Debug function var_export detected',
+                   'level'  => 1) ;
+// Debug function print_r
+$l_aRule[] = array('pattern'=> '&print_r\(&',
+                   'message'=> 'Debug function print_r detected',
+                   'level'  => 1) ;
+// Debug function phpinfo
+$l_aRule[] = array('pattern'=> '&phpinfo\(&',
+                   'message'=> 'function phpinfo detected',
+                   'level'  => 1) ;
+
+/**
+ * LEVEL 2
+ **/
+// Debug function exec(...)
+$l_aRule[] = array('pattern'=> '&exec\(&',
+                   'message'=> 'function exec detected',
+                   'level'  => 2) ;
+// Debug function passthru(...)
+$l_aRule[] = array('pattern'=> '&passthru\(&',
+                   'message'=> 'function passthru detected',
+                   'level'  => 2) ;
+// Debug function proc_open(...)
+$l_aRule[] = array('pattern'=> '&proc_open\(&',
+                   'message'=> 'function proc_open detected',
+                   'level'  => 2) ;
+// Debug function shell_exec(...)
+$l_aRule[] = array('pattern'=> '&shell_exec\(&',
+                   'message'=> 'function shell_exec detected',
+                   'level'  => 2) ;
+// Debug function system(...)
+$l_aRule[] = array('pattern'=> '&system\(&',
+                   'message'=> 'function system detected',
+                   'level'  => 2) ;
+// Debug function eval
+$l_aRule[] = array('pattern'=> '&eval\(&',
+                   'message'=> 'function eval detected',
+                   'level'  => 2) ;
+// XSS
+$l_aRule[] = array('pattern'=> '&(echo|print|printf|flush)\s.*(\$_GET|\$_POST|\$_COOKIE)\[&',
+                   'message'=> 'XSS Alert : possible XSS injection with a display function ',
+                   'level'  => '2') ;
+$l_aRule[] = array('pattern'=> '&(include|include_once|require|require_once)\s.*(\$_GET|\$_POST|\$_COOKIE)\[&',
+                   'message'=> 'XSS Alert : possible XSS injection with a include function ',
+                   'level'  => '2') ;
+
+
+/**
+ * LEVEL 3
+ **/
+// Debug function die(...)
+$l_aRule[] = array('pattern'=> '&die\((.)+\)&',
+                   'message'=> 'function die detected with message inside',
+                   'level'  => 3) ;
+// Debug function exit(...)
+$l_aRule[] = array('pattern'=> '&exit\((.)+\)&',
+                   'message'=> 'function exit detected with message inside',
+                   'level'  => 3) ;
+// Potentialy strange usage(...)
+$l_aRule[] = array('pattern'=> '&REQUEST_URI&',
+                   'message'=> 'XSS alert: use of REQUEST_URI, encoded ?',
+                   'level'  => 3) ;
+// Potentialy strange usage(...)
+$l_aRule[] = array('pattern'=> '&PHP_SELF&',
+                   'message'=> 'XSS alert: use of PHP_SELF, encoded ?',
+                   'level'  => 3) ;
+// Potentialy strange usage(...)
+$l_aRule[] = array('pattern'=> '&_REQUEST&',
+                   'message'=> 'Use of _REQUEST, encoded ?',
+                   'level'  => 3) ;
+// Potentialy strange usage(...)
+$l_aRule[] = array('pattern'=> '&(<\? )|(<\?\n)|(<\?=)&',
+                   'message'=> 'Short tags detected "<?"',
+                   'level'  => 3) ;
+// Potentialy strange usage(...)
+$l_aRule[] = array('pattern'=> '&is_numeric\((.)+\)&',
+                   'message'=> 'Is_numeric may be an unsecure method to check numeric (+12.45, x0F00, ...)',
+                   'level'  => 3) ;
+/**
+ * Add your own rules here !!
+ **/
