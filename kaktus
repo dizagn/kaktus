@@ -1,4 +1,4 @@
-#!/usr/bin/php5
+#!/usr/bin/php
 <?php
 /**
  * PHP Security Framework Auditing Tool
@@ -49,14 +49,15 @@ class kaktus
     
     public function __construct()
     {
-        if(TRUE == file_exists('rules')){
-            include('rules');
+        $l_sRulesFile = dirname(__FILE__).DIRECTORY_SEPARATOR.'rules' ;
+        if(TRUE == file_exists($l_sRulesFile)){ 
+            include_once($l_sRulesFile);
             $this->m_aRules = $l_aRule ;
         }else{
-            die("\nRules file doesn't found\n\n") ;
+            die("\nRules file not found\n\n") ;
         }
-        
     }
+
     /***************************************************************************
      * RULEZ AND PARSING RULES
      **/
@@ -71,17 +72,27 @@ class kaktus
     {
         foreach ($this->m_aRules AS $key => $value){
             
-            if (1 == preg_match($value['pattern'],$p_sContent) &&
-                $value['level'] <= $this->m_aArgs['l']){
-                $this->log( "\n     LINE ".($p_iNum+1)."\t[ ".$this->logLabel($value['level'])." ]\t ".$value['message'] );
+            if (1 == preg_match($value['pattern'],$p_sContent) && $value['level'] <= $this->m_aArgs['l']){
                 
                 // Add info to the Counter 
-                if ($value['level'] == self::CRITICAL)
-                $this->add(self::CNT_CRITICAL) ;
-                else if($value['level'] == self::WARNING)
-                $this->add(self::CNT_WARNING) ;
-                else if($value['level'] == self::NOTICE)
-                $this->add(self::CNT_NOTICE) ;
+                if ($value['level'] == self::CRITICAL){
+                    $this->add(self::CNT_CRITICAL) ;
+                    $colorStart = "\033[41m";
+                    $colorEnd = "\033[0m";
+                }
+                else if($value['level'] == self::WARNING){
+                    $this->add(self::CNT_WARNING) ;
+                    $colorStart = "\033[45m";
+                    $colorEnd = "\033[0m";
+                }
+                else if($value['level'] == self::NOTICE){
+                    $this->add(self::CNT_NOTICE) ;
+                    $colorStart = "\033[42m";
+                    $colorEnd = "\033[0m";
+                }
+
+                $this->log( "\n".$colorStart."     LINE ".($p_iNum+1)."\t[ ".$this->logLabel($value['level'])." ]\t ".$value['message'].$colorEnd );               
+
             }
         }        
     }
@@ -128,12 +139,12 @@ class kaktus
         // File exists ?
         if (FALSE == file_exists($p_sFileName)){
             $this->log( "\n Auditing file : ".$p_sFileName, self::LOG ) ;    
-            $this->log( "\n    [ ERROR ] File not found", self::LOG );
+            $this->log( "\n\033[41m    [ ERROR ] File not found\033[0m", self::LOG );
         }
         // File is readable ?
         else if (FALSE == is_readable($p_sFileName)){
             $this->log( "\n Auditing file : ".$p_sFileName, self::LOG ) ;
-            $this->log( "\n    [ ERROR ] File is not readable", self::LOG );
+            $this->log( "\n\033[41m    [ ERROR ] File is not readable\033[0m", self::LOG );
             $this->add(self::CNT_UNREAD) ;
         }
         // Wrong extension file
@@ -176,10 +187,10 @@ class kaktus
         $l_sPath = rtrim( $p_sPath, DIRECTORY_SEPARATOR) ;
         
         if (FALSE == is_dir($l_sPath)){
-            $this->log( "\n [ ERROR ] Directory not found\n" );
+            $this->log( "\n\033[41m [ ERROR ] Directory not found\033[0m\n" );
         }
         else if (FALSE == is_readable($l_sPath)){
-            $this->log( "\n [ ERROR ] Directory is not readable\n" );
+            $this->log( "\n\033[41m [ ERROR ] Directory is not readable\033[0m\n" );
         }
         else{
             $this->log( "\n\n Auditing directory : '".$l_sPath."'\n" );
@@ -499,7 +510,6 @@ class kaktus
         if (TRUE == isset($this->m_aArgs['f'])){
             echo $this->auditFile($this->m_aArgs['f']) ;
             echo $this->resume() ;
-            
         }        
         // Option -d : audit one directory
         else if (TRUE == isset($this->m_aArgs['d'])){
