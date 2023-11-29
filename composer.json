@@ -1,0 +1,24 @@
+{
+    "name": "jessicakuijer/kaktus",
+    "description": "Outil d'analyse de sécurité PHP.",
+    "type": "library",
+    "require": {
+        "php": "^8.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "kaktus\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "N. Namont",
+            "email": "contact@dizagn.com"
+        },
+        {
+            "name": "J. Kuijer",
+            "email": "jessicakuijer@me.com"
+        }
+    ],
+    "minimum-stability": "stable"
+}

@@ -1,5 +1,8 @@
 #!/usr/bin/php
 <?php
+
+namespace kaktus;
+
 /**
  * PHP Security Framework Auditing Tool
  * 
