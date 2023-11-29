@@ -67,7 +67,7 @@ class kaktus
             include_once($l_sRulesFile);
             $this->m_aRules = $l_aRule ;
         }else {
-            throw new Exception("Rules file not found at: ".$l_sRulesFile);
+            throw new \Exception("Rules file not found at: ".$l_sRulesFile);
         }
     }
 
@@ -110,7 +110,7 @@ class kaktus
     {
         $l_sSource = file_get_contents($p_sFileName);
         if ($l_sSource === false) {
-            throw new Exception("Unable to read the file: " . $p_sFileName);
+            throw new \Exception("Unable to read the file: " . $p_sFileName);
         }
 
         $l_aTokens = @token_get_all($l_sSource);
@@ -212,7 +212,7 @@ class kaktus
     {
         $l_hHd = opendir($p_sPath);
         if ($l_hHd === false) {
-            throw new Exception("Unable to open the directory: " . $p_sPath);
+            throw new \Exception("Unable to open the directory: " . $p_sPath);
         }
 
         // Directory Browsing
@@ -367,7 +367,7 @@ class kaktus
     {
         $fp = fopen('php://stdin', 'r');
         if (FALSE == $fp) {
-            throw new Exception("Unable to open standard input");
+            throw new \Exception("Unable to open standard input");
         }
 
         $input = strtoupper(fgets($fp, 255));
@@ -391,7 +391,7 @@ class kaktus
         // File logging
         if (($p_iVerbose == self::ALL || $p_iVerbose == self::LOG) && TRUE == isset($this->m_aArgs['o'])) {
             if ($this->m_hLogHd === null) {
-                throw new Exception("Log file not created");          
+                throw new \Exception("Log file not created");          
             }
             fwrite($this->m_hLogHd, $p_sInfo);
         }
@@ -447,7 +447,7 @@ class kaktus
         $this->m_hLogHd = fopen($l_sFileName,'w+');
         
         if (FALSE == $this->m_hLogHd) {
-            throw new Exception("Unable to create log file: " . $l_sFileName);
+            throw new \Exception("Unable to create log file: " . $l_sFileName);
         }
         $this->log(" Log file : " . date('Y-m-d H:m') . "\n");
     }
