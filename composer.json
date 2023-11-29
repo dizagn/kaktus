@@ -1,7 +1,7 @@
 {
     "name": "jessicakuijer/kaktus",
     "description": "Outil d'analyse de sécurité PHP.",
-    "license": "Custom",
+    "license": "proprietary",
     "type": "library",
     "require": {
         "php": "^8.0"
