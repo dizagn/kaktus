@@ -151,11 +151,9 @@ class kaktus
      * Audit one file
      *
      * @param string $p_sFileName File name
-     * @param bool $p_bVerbose Verbose analyse when use in file context or less
-     * in directory context
      * @return void
      **/
-    protected function auditFile(string $p_sFileName, bool $p_bVerbose = TRUE): void
+    protected function auditFile(string $p_sFileName): void
     {
         // File exists ?
         if (FALSE == file_exists($p_sFileName)) {
@@ -169,7 +167,7 @@ class kaktus
             $this->add(self::CNT_UNREAD);
         }
         // Wrong extension file
-        else if ($this->getExt($p_sFileName) == FALSE) {
+        else if ($this->isValidExtension($p_sFileName) == FALSE) {
             $this->log( "\n Auditing file : ".$p_sFileName, self::LOG );
             $this->log( "\n    [ IGNOR ] Wrong file : " .$p_sFileName, self::LOG );
             $this->add(self::CNT_IGNOR);
@@ -215,7 +213,7 @@ class kaktus
             $this->log( "\n\033[41m [ ERROR ] Directory is not readable\033[0m\n" );
         }
         else {
-            $this->log( "\n\n Auditing directory : '".$l_sPath."'\n" );
+            $this->log( "\n Auditing directory : '".$l_sPath."'\n" );
             $this->log( " Excluded directories : ".( !empty($p_aExcludedDir) ? "'".implode(', ', $p_aExcludedDir)."'" : 'None') ."\n" );
             $this->recReadDir( $l_sPath, $p_aExcludedDir );
         }
@@ -262,7 +260,7 @@ class kaktus
      * @param $p_sFileName
      * @return bool TRUE / FALSE
      **/
-    protected function getExt(string $p_sFileName): bool
+    protected function isValidExtension(string $p_sFileName): bool
     {
         $ext = pathinfo(strtolower($p_sFileName), PATHINFO_EXTENSION);
         return in_array($ext, $this->m_aExt);
@@ -389,13 +387,13 @@ class kaktus
     */
     protected function _getInput(): string
     {
-        $fp = fopen('php://stdin', 'r');
-        if (FALSE == $fp) {
+        $filePointer = fopen('php://stdin', 'r');
+        if (FALSE == $filePointer) {
             throw new \Exception("Unable to open standard input");
         }
 
-        $input = strtoupper(fgets($fp, 255));
-        fclose($fp);
+        $input = strtoupper(fgets($filePointer, 255));
+        fclose($filePointer);
         return trim($input);
     }
     
