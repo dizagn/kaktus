@@ -45,6 +45,21 @@ class kaktus
     const CNT_WARNING       = 7 ;
     const CNT_NOTICE        = 8 ;
     
+    // Configuration file
+    const CONFIG_FILE       = 'kaktus.ini';
+
+    // Availables options
+    const OPTIONS = [
+        // CLI option => Config option
+        'h' => '',
+        't' => 'tokenize',
+        'l' => 'level',
+        'o' => 'log',
+        'f' => 'file',
+        'd' => 'directory',
+        'e' => 'exclude',
+    ];
+
     // List of extension to parse
     protected $m_aExt = ['php','php3', 'php4', 'php5', 'inc','phtml'];
     // List des extensions trouvés 
@@ -498,6 +513,8 @@ class kaktus
      **/
     public function run(): void
     {
+        $this->displayBanner();
+
         /**
          * f:   valeur requise
          * f::  valeur optionnelle // php 5.3 only
@@ -507,14 +524,13 @@ class kaktus
         // $longOpt  = array('help', 'version'); PHP V5.3 only
         
         $this->m_aArgs = getopt( $shortOpt /*, $longOpt*/ );
+        $this->m_aArgs = $this->getConfigFromFile(self::CONFIG_FILE, $this->m_aArgs);
         $this->m_aArgs = $this->convertLogLevel($this->m_aArgs);
         
         // Log file creation
         if (TRUE == isset($this->m_aArgs['o'])){
             $this->createLogFile($this->m_aArgs['o']);
         }
-
-        $this->displayBanner();
 
         // Option -f : audit one file
         if (TRUE == isset($this->m_aArgs['f'])){
@@ -523,10 +539,13 @@ class kaktus
         }        
         // Option -d : audit one directory
         else if (TRUE == isset($this->m_aArgs['d'])){
-            if (empty($this->m_aArgs['e'])) {
-                echo $this->auditDir($this->m_aArgs['d']);
+            if (!empty($this->m_aArgs['e'])) {
+                if (is_string($this->m_aArgs['e'])) {
+                    $this->m_aArgs['e'] = explode(',', $this->m_aArgs['e']);
+                }
+                echo $this->auditDir($this->m_aArgs['d'], $this->m_aArgs['e']);
             } else {
-                echo $this->auditDir($this->m_aArgs['d'], explode(',', $this->m_aArgs['e']));
+                echo $this->auditDir($this->m_aArgs['d']);
             }
             echo $this->resume();
         }        
@@ -536,6 +555,35 @@ class kaktus
         } 
         
         $this->log( "\n\n *******************************************************************\n\n" ) ;
+    }
+
+    /**
+     * Gets configuration from a ini file.
+     * 
+     * Overwrites command options.
+     * 
+     * @param string $p_sFilename name of the configuration file.
+     * @param array $p_aArgs options passed to the command line.
+     * 
+     * @return array options
+     */
+    protected function getConfigFromFile(string $p_sFilename, array $p_aArgs): array 
+    {
+        if (!file_exists($p_sFilename)) {
+            return $p_aArgs;
+        }
+
+        $this->log( "\n\n Configuration file used: '".$p_sFilename."'\n" );
+
+        $config = parse_ini_file($p_sFilename);
+
+        foreach (self::OPTIONS as $cli => $ini) {
+            if (!empty($config[$ini])) {
+                $p_aArgs[$cli] = $config[$ini];
+            }
+        }
+
+        return $p_aArgs;
     }
 
     /**
