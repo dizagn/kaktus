@@ -19,6 +19,9 @@
         {
             "name": "J. Kuijer",
             "email": "jessicakuijer@me.com"
+        },
+        {
+            "name": "M. Capron"
         }
     ],
     "minimum-stability": "stable"
