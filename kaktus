@@ -1,23 +1,27 @@
 #!/usr/bin/php
 <?php
+
+namespace kaktus;
+
 /**
  * PHP Security Framework Auditing Tool
  * 
  * @framework Kaktus
- * @version 0.1 Beta
+ * @version 2.0
  * @author N.Namont
+ * @author J.Kuijer <jessicakuijer@me.com>
  *
  **/
 class kaktus
 {
     // Project title
-    const PROJECTTITLE      = 'KAKTUS' ;
+    const PROJECTTITLE      = 'KAKTUS';
     // Project description
-    const PROJECTDESC       = "PHP security auditing tool.\n Please visit http://kaktus.dizagn.com for more informations" ;
+    const PROJECTDESC       = "PHP security auditing tool.\n Please visit http://kaktus.dizagn.com for more informations";
     // script version, date
-    const VERSION           = '0.1' ;
+    const VERSION           = '2.0';
     // script version, date
-    const DATE              = '2008-08' ;
+    const DATE              = '2024-01';
     
     // LOG OPTIONS
     // VERBOSE MODE
@@ -27,7 +31,9 @@ class kaktus
     // Log Level
     const CRITICAL          = 1 ;
     const WARNING           = 2 ;
-    const NOTICE             = 3 ;
+    const NOTICE            = 3 ;
+    // Log file name
+    const LOGFILE           = 'kaktus_log.txt';
     
     // COUNT OPTIONS
     const CNT_TOTAL         = 1 ;
@@ -39,22 +45,44 @@ class kaktus
     const CNT_WARNING       = 7 ;
     const CNT_NOTICE        = 8 ;
     
+    // Configuration file
+    const CONFIG_FILE       = 'kaktus.ini';
+
+    // Availables options
+    const OPTIONS = [
+        // CLI option => Config option
+        'h' => '',
+        't' => 'tokenize',
+        'l' => 'level',
+        'o' => 'log',
+        'f' => 'file',
+        'd' => 'directory',
+        'e' => 'exclude',
+    ];
+
     // List of extension to parse
-    protected $m_aExt = array('php','php3', 'php4', 'php5', 'inc','phtml') ;
+    protected $m_aExt = ['php','php3', 'php4', 'php5', 'inc','phtml'];
     // List des extensions trouvés 
-    protected $m_aExtList = array() ; 
+    protected $m_aExtList = [];
     // Command line options array
-    protected $m_aArgs ;        
-    
+    protected $m_aArgs;
+    // Rules array
+    protected $m_aRules;
+    // Counters array
+    protected $m_aCount;
+    // List of elements array
+    protected $m_aList;
+    // Log file handler
+    protected $m_hLogHd;
     
     public function __construct()
     {
-        $l_sRulesFile = dirname(__FILE__).DIRECTORY_SEPARATOR.'rules' ;
-        if(TRUE == file_exists($l_sRulesFile)){ 
+        $l_sRulesFile = __DIR__ . DIRECTORY_SEPARATOR . 'rules';
+        if (TRUE == file_exists($l_sRulesFile)) { 
             include_once($l_sRulesFile);
             $this->m_aRules = $l_aRule ;
-        }else{
-            die("\nRules file not found\n\n") ;
+        }else {
+            throw new \Exception("Rules file not found at: ".$l_sRulesFile);
         }
     }
 
@@ -68,31 +96,23 @@ class kaktus
      * @param int $p_iNum Line number
      * @param string $p_sContent Line content
      **/
-    protected function rulez($p_iNum,$p_sContent)
+    protected function rulez(int $p_iNum, string $p_sContent): void
     {
-        foreach ($this->m_aRules AS $key => $value){
+        foreach ($this->m_aRules as $key => $value) {
             
-            if (1 == preg_match($value['pattern'],$p_sContent) && $value['level'] <= $this->m_aArgs['l']){
+            if (1 === preg_match($value['pattern'], $p_sContent) && $value['level'] <= $this->m_aArgs['l']) {
                 
-                // Add info to the Counter 
-                if ($value['level'] == self::CRITICAL){
-                    $this->add(self::CNT_CRITICAL) ;
-                    $colorStart = "\033[41m";
-                    $colorEnd = "\033[0m";
-                }
-                else if($value['level'] == self::WARNING){
-                    $this->add(self::CNT_WARNING) ;
-                    $colorStart = "\033[45m";
-                    $colorEnd = "\033[0m";
-                }
-                else if($value['level'] == self::NOTICE){
-                    $this->add(self::CNT_NOTICE) ;
-                    $colorStart = "\033[42m";
-                    $colorEnd = "\033[0m";
-                }
+                $color = match ($value['level']) {
+                    self::CRITICAL => ['start' => "\033[41m", 'end' => "\033[0m"],
+                    self::WARNING => ['start' => "\033[45m", 'end' => "\033[0m"],
+                    self::NOTICE => ['start' => "\033[42m", 'end' => "\033[0m"],
+                    default => ['start' => '', 'end' => ''],
+                };
 
-                $this->log( "\n".$colorStart."     LINE ".($p_iNum+1)."\t[ ".$this->logLabel($value['level'])." ]\t ".$value['message'].$colorEnd );               
+                $this->add($value['level']);
+                //$this->log("Rule Key: {$key}");
 
+                $this->log("\n{$color['start']}     LINE " . ($p_iNum + 1) . "\t[ " . $this->logLabel($value['level']) . " ]\t " . $value['message'] . $color['end']);
             }
         }        
     }
@@ -101,22 +121,23 @@ class kaktus
      * Tokenize each files, and apply token rules
      * @param string $p_sFileName File name to tokenize
      **/
-    protected function tokenize($p_sFileName)
+    protected function tokenize(string $p_sFileName): void
     {
         $l_sSource = file_get_contents($p_sFileName);
-        $l_aTokens = @token_get_all($l_sSource) ;
-        foreach($l_aTokens AS $l_aToken){
-            if(TRUE == is_array($l_aToken))
+        if ($l_sSource === false) {
+            throw new \Exception("Unable to read the file: " . $p_sFileName);
+        }
+
+        $l_aTokens = @token_get_all($l_sSource);
+
+        foreach ($l_aTokens as $l_aToken) {
+            if (TRUE == is_array($l_aToken))
             {
-                switch(token_name($l_aToken[0])){
-                    case 'T_VARIABLE' :
-                        $this->addToList('variable',$l_aToken[1]) ;
-                        break;
-                    case 'T_CLASS' :
-                        break;
-                    case 'T_FUNCTION' :
-                        break;
-                }
+                match(token_name($l_aToken[0])){
+                    'T_VARIABLE' => $this->addToList('variable',$l_aToken[1]),
+                    'T_CLASS', 'T_FUNCTION' => null,
+                    default => null
+                };
             }
         }
     }
@@ -130,203 +151,211 @@ class kaktus
      * Audit one file
      *
      * @param string $p_sFileName File name
-     * @param bool $p_bVerbose Verbose analyse when use in file context or less
-     * in directory context
-     * @return none
+     * @return void
      **/
-    protected function auditFile($p_sFileName,$p_bVerbose = TRUE)
+    protected function auditFile(string $p_sFileName): void
     {
         // File exists ?
-        if (FALSE == file_exists($p_sFileName)){
-            $this->log( "\n Auditing file : ".$p_sFileName, self::LOG ) ;    
+        if (FALSE == file_exists($p_sFileName)) {
+            $this->log( "\n Auditing file : ".$p_sFileName, self::LOG );    
             $this->log( "\n\033[41m    [ ERROR ] File not found\033[0m", self::LOG );
         }
         // File is readable ?
-        else if (FALSE == is_readable($p_sFileName)){
-            $this->log( "\n Auditing file : ".$p_sFileName, self::LOG ) ;
+        else if (FALSE == is_readable($p_sFileName)) {
+            $this->log( "\n Auditing file : ".$p_sFileName, self::LOG );
             $this->log( "\n\033[41m    [ ERROR ] File is not readable\033[0m", self::LOG );
-            $this->add(self::CNT_UNREAD) ;
+            $this->add(self::CNT_UNREAD);
         }
         // Wrong extension file
-        else if($this->getExt($p_sFileName) == FALSE){
-            $this->log( "\n Auditing file : ".$p_sFileName, self::LOG ) ;
+        else if ($this->isValidExtension($p_sFileName) == FALSE) {
+            $this->log( "\n Auditing file : ".$p_sFileName, self::LOG );
             $this->log( "\n    [ IGNOR ] Wrong file : " .$p_sFileName, self::LOG );
-            $this->add(self::CNT_IGNOR) ;
+            $this->add(self::CNT_IGNOR);
         }
         // Auditing file
-        else{
-            $this->log( "\n Auditing file : ".$p_sFileName ) ;
+        else {
+            $this->log( "\n Auditing file : ".$p_sFileName );
             
             // token audit
-            if(TRUE == isset($this->m_aArgs['t'])){
+            if(TRUE == isset($this->m_aArgs['t'])) {
                 $this->tokenize($p_sFileName);
             }
             
             // pattern audit
-            $l_aContent = file($p_sFileName) ;
+            $l_aContent = file($p_sFileName);
             // Content audit line per line
-            foreach($l_aContent AS $key => $value){
-                $this->rulez($key, $value) ;
-                $this->add(self::CNT_LINEAUDIT) ;
+            foreach($l_aContent as $key => $value) {
+                $this->rulez($key, $value);
+                $this->add(self::CNT_LINEAUDIT);
             }
-            $this->add(self::CNT_AUDIT) ;
+            $this->add(self::CNT_AUDIT);
         }
         // Add to extension list and total
-        $this->addToList('extension',pathinfo(strtolower($p_sFileName), PATHINFO_EXTENSION)) ;
-        $this->add(self::CNT_TOTAL) ;
+        $this->addToList('extension', pathinfo(strtolower($p_sFileName), PATHINFO_EXTENSION));
+        $this->add(self::CNT_TOTAL);
     }
         
     /**
      * Audit one directory
      *
      * @param string $p_sPath directory path to audit
-     * @return 
+     * @param array $p_aExcludedDir list of directories not to be audited
+     * @return void
      **/
-    protected function auditDir($p_sPath)
+    protected function auditDir(string $p_sPath, array $p_aExcludedDir = []): void
     {
-        $l_sPath = rtrim( $p_sPath, DIRECTORY_SEPARATOR) ;
+        $l_sPath = rtrim( $p_sPath, DIRECTORY_SEPARATOR);
         
-        if (FALSE == is_dir($l_sPath)){
+        if (FALSE == is_dir($l_sPath)) {
             $this->log( "\n\033[41m [ ERROR ] Directory not found\033[0m\n" );
         }
-        else if (FALSE == is_readable($l_sPath)){
+        else if (FALSE == is_readable($l_sPath)) {
             $this->log( "\n\033[41m [ ERROR ] Directory is not readable\033[0m\n" );
         }
-        else{
-            $this->log( "\n\n Auditing directory : '".$l_sPath."'\n" );
-            $this->recReadDir( $l_sPath );
+        else {
+            $this->log( "\n Auditing directory : '".$l_sPath."'\n" );
+            $this->log( " Excluded directories : ".( !empty($p_aExcludedDir) ? "'".implode(', ', $p_aExcludedDir)."'" : 'None') ."\n" );
+            $this->recReadDir( $l_sPath, $p_aExcludedDir );
         }
     }
     
     /**
      * Read and list directory content recursively
+     * @param string $p_sPath directory path to audit
+     * @param array $p_aExcludedDir list of directories not to be audited
      **/
-    protected function recReadDir($p_sPath)
+    protected function recReadDir(string $p_sPath, array $p_aExcludedDir = []): void
     {
-        $l_hHd = opendir($p_sPath) ;
-     
+        $l_hHd = opendir($p_sPath);
+        if ($l_hHd === false) {
+            throw new \Exception("Unable to open the directory: " . $p_sPath);
+        }
+
         // Directory Browsing
-        while(FALSE !== ($l_sFile = readdir($l_hHd))){
-            // Type and extension exclusion
-            if ($l_sFile != '.' &&
-                $l_sFile != '..' ){
-                $l_sPath = $p_sPath.DIRECTORY_SEPARATOR.$l_sFile ;
-                
-                if (TRUE == is_dir($l_sPath)){
-                    $this->recReadDir($l_sPath) ;
-                }
-                else{
-                    $this->auditFile($l_sPath) ;    
+        try {
+            while (false !== ($l_sFile = readdir($l_hHd))) {
+                // Type and extension exclusion
+                if ($l_sFile != '.' &&
+                    $l_sFile != '..') {
+                    $l_sPath = $p_sPath . DIRECTORY_SEPARATOR . $l_sFile;
+
+                    if (!empty($p_aExcludedDir) && in_array($l_sPath, $p_aExcludedDir)) {
+                        continue;
+                    }
+
+                    if (true == is_dir($l_sPath)) {
+                        $this->recReadDir($l_sPath);
+                    } else {
+                        $this->auditFile($l_sPath);
+                    }
                 }
             }
+        } finally {
+            closedir($l_hHd);
         }
-        closedir($l_hHd) ;
     }
     
     /**
-     * Check if extension has to be parsed or no
+     * Check if extension has to be parsed or not
      * @param $p_sFileName
      * @return bool TRUE / FALSE
      **/
-    protected function getExt($p_sFileName)
+    protected function isValidExtension(string $p_sFileName): bool
     {
-        $ext = pathinfo(strtolower($p_sFileName), PATHINFO_EXTENSION) ;
-        return in_array($ext, $this->m_aExt) ;
+        $ext = pathinfo(strtolower($p_sFileName), PATHINFO_EXTENSION);
+        return in_array($ext, $this->m_aExt);
     }
     
     /**
      * Display the project help
      * @return string Version
      **/
-    protected function callHelp()
+    protected function callHelp(): string
     {
-        $string  = "\n\n Usage : kaktus [options] \n";
-        
-        $string .= "\n Example 1 : kaktus -o log.txt -l critical -f test.php";
-        $string .= "\n Example 2 : kaktus -o log.txt -l notice -d ../my_directory \n";
-        
-        $string .= "\n -h --help \t\t\t Display this help";
-        $string .= "\n -f --file [filename]\t\t Audit one given file";
-        $string .= "\n -d --dir [/path/to/directory]\t Audit all files from directory recursively";
-        $string .= "\n -t --token\t\t\t Token analysis, more complete but more longer";
-        $string .= "\n -o --output [log_filename]\t Log script output into a logfile";
-        $string .= "\n -l --log [critical / warning / notice]\t Log level";
-        return $string;
+        return "\n\n Usage : kaktus [options] \n"
+            . "\n Example 1 : kaktus -o log.txt -l critical -f test.php"
+            . "\n Example 2 : kaktus -o log.txt -l notice -d ../my_directory"
+            . "\n Example 3 : kaktus -o log.txt -l notice -d ../my_directory -e /vendor,/tests \n"
+            . "\n -h --help \t\t\t Display this help"
+            . "\n -f --file [filename]\t\t Audit one given file"
+            . "\n -d --dir [/path/to/directory]\t Audit all files from directory recursively"
+            . "\n -e --exclude [/path1,/path2...] List of directories to be excluded from the audit"
+            . "\n -t --token\t\t\t Token analysis, more complete but more longer"
+            . "\n -o --output [log_filename]\t Log script output into a logfile"
+            . "\n -l --log [critical / warning / notice]\t Log level";
     }
-    
+
     /**
      * Display audit counter results
      * 
+     * @return string Summary of the audit
      **/
-    protected function resume()
+    protected function resume(): string
     {
         if(FALSE == isset($this->m_aCount) || FALSE == is_array($this->m_aCount)){
             exit();
         }
         
-        $nbTotal        = $this->m_aCount[self::CNT_TOTAL] ;
-        $nbAudit        = (TRUE == isset($this->m_aCount[self::CNT_AUDIT] )) ? $this->m_aCount[self::CNT_AUDIT] : 0 ;
-        $nbLineAudit    = (TRUE == isset($this->m_aCount[self::CNT_LINEAUDIT] )) ? $this->m_aCount[self::CNT_LINEAUDIT] : 0 ;
-        $nbIgnor        = (TRUE == isset($this->m_aCount[self::CNT_IGNOR] )) ? $this->m_aCount[self::CNT_IGNOR] : 0 ;
-        $nbUnread       = (TRUE == isset($this->m_aCount[self::CNT_UNREAD] )) ? $this->m_aCount[self::CNT_UNREAD] : 0 ;
+        $nbTotal        = $this->m_aCount[self::CNT_TOTAL] ?? 0;
+        $nbAudit        = (TRUE == isset($this->m_aCount[self::CNT_AUDIT] )) ? $this->m_aCount[self::CNT_AUDIT] : 0;
+        $nbLineAudit    = (TRUE == isset($this->m_aCount[self::CNT_LINEAUDIT] )) ? $this->m_aCount[self::CNT_LINEAUDIT] : 0;
+        $nbIgnor        = (TRUE == isset($this->m_aCount[self::CNT_IGNOR] )) ? $this->m_aCount[self::CNT_IGNOR] : 0;
+        $nbUnread       = (TRUE == isset($this->m_aCount[self::CNT_UNREAD] )) ? $this->m_aCount[self::CNT_UNREAD] : 0;
         
-        $nbPatCritical  = (TRUE == isset($this->m_aCount[self::CNT_CRITICAL] )) ? $this->m_aCount[self::CNT_CRITICAL] : 0 ;
-        $nbPatWarning   = (TRUE == isset($this->m_aCount[self::CNT_WARNING] )) ? $this->m_aCount[self::CNT_WARNING] : 0 ;
-        $nbPatNotice    = (TRUE == isset($this->m_aCount[self::CNT_NOTICE] )) ? $this->m_aCount[self::CNT_NOTICE] : 0 ;
-        $nbPatTotal     = $nbPatCritical + $nbPatWarning + $nbPatNotice ;
+        $nbPatCritical  = (TRUE == isset($this->m_aCount[self::CNT_CRITICAL] )) ? $this->m_aCount[self::CNT_CRITICAL] : 0;
+        $nbPatWarning   = (TRUE == isset($this->m_aCount[self::CNT_WARNING] )) ? $this->m_aCount[self::CNT_WARNING] : 0;
+        $nbPatNotice    = (TRUE == isset($this->m_aCount[self::CNT_NOTICE] )) ? $this->m_aCount[self::CNT_NOTICE] : 0;
+        $nbPatTotal     = $nbPatCritical + $nbPatWarning + $nbPatNotice;
         
         // files 
-        $string  = "\n\n  Files results :\n";
-        $string .= "\n\t - Total Files scanned \t\t ".$nbTotal;
-        $string .= "\n\t - Files audited \t\t ".$nbAudit ." with ".$nbLineAudit." lines readed ";
-        $string .= "\n\t - Files ignored \t\t ".$nbIgnor ;
-        $string .= "\n\t - Files unreadables \t\t ".$nbUnread ;
+        $string  = "\n\n  Files results :\n"
+            . "\n\t - Total Files scanned \t\t $nbTotal"
+            . "\n\t - Files audited \t\t $nbAudit with $nbLineAudit lines readed"
+            . "\n\t - Files ignored \t\t $nbIgnor"
+            . "\n\t - Files unreadables \t\t $nbUnread";
         //pattern matching
-        $string .= "\n\n  Pattern results by level:\n";
-        if($nbPatTotal > 0){
-             $string .= "\n\t - Critical alert \t\t ".$nbPatCritical." ( ".$this->getPercent($nbPatCritical,$nbPatTotal)." )" ;
-             $string .= "\n\t - Warning alert \t\t ".$nbPatWarning." ( ".$this->getPercent($nbPatWarning,$nbPatTotal)." )" ;
-             $string .= "\n\t - Notice alert \t\t ".$nbPatNotice." ( ".$this->getPercent($nbPatNotice,$nbPatTotal)." )" ;
-        }
-        else{
-             $string .="\n\t - No pattern matching" ;
-        }
+        $string .= "\n\n  Pattern results by level:\n"
+        . ($nbPatTotal > 0)
+            ? "\n\t - Critical alert \t\t ".$nbPatCritical." ( ".$this->getPercent($nbPatCritical,$nbPatTotal)." )"
+                . "\n\t - Warning alert \t\t ".$nbPatWarning." ( ".$this->getPercent($nbPatWarning,$nbPatTotal)." )"
+                . "\n\t - Notice alert \t\t ".$nbPatNotice." ( ".$this->getPercent($nbPatNotice,$nbPatTotal)." )"
+            : "\n\t - No pattern matching";
         
         // Extension list
-        if(TRUE ==isset($this->m_aList['extension']) && count($this->m_aList['extension'])>1){
+        if (TRUE ==isset($this->m_aList['extension']) && count($this->m_aList['extension']) > 1) {
             $string .= "\n\n  Files extensions audited:\n";
             arsort($this->m_aList['extension']) ;
-            $l_iNbTotal = count($this->m_aList['extension']) ;
-            foreach($this->m_aList['extension'] AS $ext => $nb){
-                if ($ext == ''){$ext = "without extension";}
-                $string .="\n\t ".$nb."\t ".$ext." ( ".$this->getPercent($nb,$nbTotal)." )" ;
+            //$l_iNbTotal = count($this->m_aList['extension']);
+            foreach ($this->m_aList['extension'] as $ext => $nb) {
+                $ext = $ext ?: "without extension";
+                $string .= "\n\t $nb\t $ext ( " . $this->getPercent($nb, $nbTotal) . " )";
             }
         }
         
         // List of classes
-        if(TRUE ==isset($this->m_aList['class']) && count($this->m_aList['class'])>0){
-            $string .= "\n\n Classes list:\n" ;
-            arsort($this->m_aList['class']) ;
-            foreach($this->m_aList['class'] AS $var => $nb){
-                $string .="\n\t ".$nb."\t ".$var ;
+        if (TRUE ==isset($this->m_aList['class']) && count($this->m_aList['class']) > 0) {
+            $string .= "\n\n Classes list:\n";
+            arsort($this->m_aList['class']);
+            foreach ($this->m_aList['class'] as $var => $nb) {
+                $string .= "\n\t $nb\t $var";
             }
         }
         
         // List of functions
-        if(TRUE ==isset($this->m_aList['function']) && count($this->m_aList['function'])>0){
-            $string .= "\n\n Functions list:\n" ;
-            arsort($this->m_aList['function']) ;
-            foreach($this->m_aList['function'] AS $var => $nb){
-                $string .="\n\t ".$nb."\t ".$var ;
+        if (TRUE ==isset($this->m_aList['function']) && count($this->m_aList['function']) > 0) {
+            $string .= "\n\n Functions list:\n";
+            arsort($this->m_aList['function']);
+            foreach ($this->m_aList['function'] as $var => $nb) {
+                $string .= "\n\t $nb\t $var";
             }
         }
         
         // List of variables
-        if(TRUE ==isset($this->m_aList['variable']) && count($this->m_aList['variable'])>0){
-            $string .= "\n\n Variables list:\n" ;
-            arsort($this->m_aList['variable']) ;
-            foreach($this->m_aList['variable'] AS $var => $nb){
-                $string .="\n\t ".$nb."\t ".$var ;
+        if (TRUE ==isset($this->m_aList['variable']) && count($this->m_aList['variable']) > 0) {
+            $string .= "\n\n Variables list:\n";
+            arsort($this->m_aList['variable']);
+            foreach($this->m_aList['variable'] as $var => $nb) {
+                $string .= "\n\t $nb\t $var";
             }
         }
         
@@ -342,56 +371,66 @@ class kaktus
      * getPercent
      * @param int $p_iNb nb to percent
      * @param int $p_iTotal total to percent
+     * @return string Percentage result with 1 decimal
      **/
-    protected function getPercent($p_iNb, $p_iTotal)
+    protected function getPercent(int $p_iNb, int $p_iTotal): string
     {
-        return round(((int)$p_iNb*100)/(int)$p_iTotal, 1).' %' ;
+        if ($p_iTotal == 0) {
+            return '0 %';
+        }
+        return round($p_iNb*100 / $p_iTotal, 1) .' %';
     }
     
     /**
     * Store keyboard input into string
     * @return string Given string
     */
-    protected function _getInput()
+    protected function _getInput(): string
     {
-        $fp = fopen('php://stdin', 'r');
-        $input = strtoupper(fgets($fp, 255));
-        fclose($fp);
-        $input = trim($input);
-        return $input;
+        $filePointer = fopen('php://stdin', 'r');
+        if (FALSE == $filePointer) {
+            throw new \Exception("Unable to open standard input");
+        }
+
+        $input = strtoupper(fgets($filePointer, 255));
+        fclose($filePointer);
+        return trim($input);
     }
     
     /**
      * Kaktus Logger
      * @param string $p_sInfo
      * @param int $p_iVerbose
+     * @return void
      **/
-    protected function log($p_sInfo, $p_iVerbose = self::ALL)
+    protected function log(string $p_sInfo, int $p_iVerbose = self::ALL): void
     {
         // Console displaying
-        if ( $p_iVerbose == self::ALL || $p_iVerbose == self::CONSOLE) {
+        if ($p_iVerbose == self::ALL || $p_iVerbose == self::CONSOLE) {
             echo $p_sInfo ;
         }
         
         // File logging
-        if ( $p_iVerbose == self::ALL || $p_iVerbose == self::LOG) {
-            if (TRUE == isset($this->m_aArgs['o'])){            
-                fwrite($this->m_hLogHd, $p_sInfo ) ;
+        if (($p_iVerbose == self::ALL || $p_iVerbose == self::LOG) && TRUE == isset($this->m_aArgs['o'])) {
+            if ($this->m_hLogHd === null) {
+                throw new \Exception("Log file not created");          
             }
+            fwrite($this->m_hLogHd, $p_sInfo);
         }
     }
     
     /**
      * Kaktus counter
      * @param int $p_iType add one to specified counter array
+     * @return void
      **/
-    protected function add($p_iType)
+    protected function add(int $p_iType): void
     {
-        if (FALSE == isset($this->m_aCount[$p_iType])){
-            $this->m_aCount[$p_iType] = 1 ;
+        if (FALSE == isset($this->m_aCount[$p_iType])) {
+            $this->m_aCount[$p_iType] = 1;
         }
-        else{
-            $this->m_aCount[$p_iType]++ ;    
+        else {
+            $this->m_aCount[$p_iType]++;    
         }
     }
     
@@ -399,34 +438,40 @@ class kaktus
      * Add 1 to an element of a list of this element, this is a counter
      * @param string $p_sElement Element of the list (Ex: variable, function, class...)
      * @param string $p_sVar Variable name which to add 1
+     * @return void
      **/
-    protected function addToList($p_sElement, $p_sVar)
+    protected function addToList(string $p_sElement, string $p_sVar): void
     {
-        if (FALSE == isset($this->m_aList[$p_sElement][$p_sVar])){
-            $this->m_aList[$p_sElement][$p_sVar] = 1 ;
+        if (FALSE == isset($this->m_aList[$p_sElement][$p_sVar])) {
+            $this->m_aList[$p_sElement][$p_sVar] = 1;
         }
-        else{
-            $this->m_aList[$p_sElement][$p_sVar]++ ;    
+        else {
+            $this->m_aList[$p_sElement][$p_sVar]++;    
         }
     }
     
     /**
      * Kaktus logger creation
      * 
+     * @param string $l_sFileName Log file name
+     * @return void
      **/
-    protected function createLogFile($l_sFileName = self::LOGFILE)
+    protected function createLogFile($l_sFileName = self::LOGFILE): void
     {
-        if (TRUE == file_exists($this->m_aArgs['o'])){
-            echo "\n /!\ Log file already exists : ".$this->m_aArgs['o']." ! overwrite (Y/N) ? : " ;
+        if (TRUE == file_exists($this->m_aArgs['o'])) {
+            echo "\n /!\ Log file already exists : ".$this->m_aArgs['o']." ! overwrite (Y/N) ? : ";
             
-            if (strtolower($this->_getInput()) != 'y'){
-                echo "\n [ Operation cancel! ], retry with another log file name\n\n"  ;
+            if (strtolower($this->_getInput()) != 'y') {
+                echo "\n [ Operation canceled! ], retry with another log file name\n\n";
                 exit;
             }
         }
-        $this->m_hLogHd = fopen($l_sFileName,'w+' ) ;
+        $this->m_hLogHd = fopen($l_sFileName,'w+');
         
-        $this->log(" Log file : ".date('Y-m-d H:m')."\n") ;
+        if (FALSE == $this->m_hLogHd) {
+            throw new \Exception("Unable to create log file: " . $l_sFileName);
+        }
+        $this->log(" Log file : " . date('Y-m-d H:m') . "\n");
     }
     
     /**
@@ -434,64 +479,117 @@ class kaktus
      * @param array $p_aArgs Array args
      * @return array Array args in numeric format
      **/
-    protected function convertLogLevel($p_aArgs)
+    protected function convertLogLevel(array $p_aArgs): array
     {
-        if(TRUE == isset($p_aArgs['l'])){
-            if (strtolower($p_aArgs['l']) == 'critical'){
-                $p_aArgs['l'] = self::CRITICAL ;
-            }
-            else if (strtolower($p_aArgs['l']) == 'warning'){
-                $p_aArgs['l'] = self::WARNING ;
-            }
-            else{
-                $p_aArgs['l'] = self::NOTICE ;
-            }
-        }
-        else{
-            $p_aArgs['l'] = self::NOTICE ;
-        }
+        $p_aArgs['l'] = match (strtolower($p_aArgs['l'] ?? '')) {
+            'critical' => self::CRITICAL,
+            'warning' => self::WARNING,
+            default => self::NOTICE,
+        };
     
-        return $p_aArgs ;
+        return $p_aArgs;
     }
     
     /**
-     * @param $p_iLogLevel Numerical log level
-     * @return Label 
+     * Converts a numerical log level to its label
+     * @param int $p_iLogLevel Numerical log level
+     * @return string Log level label 
      **/
-    protected function logLabel($p_iLogLevel)
+    protected function logLabel(int $p_iLogLevel): string
     {
-        if($p_iLogLevel == 1){
-            return 'CRITICAL' ;
-        }
-        else if($p_iLogLevel == 2){
-            return 'WARNING' ;
-        }
-        else if($p_iLogLevel == 3){
-            return 'NOTICE' ;
-        }
+        return match ($p_iLogLevel) {
+            1 => 'CRITICAL',
+            2 => 'WARNING',
+            3 => 'NOTICE',
+            default => 'UNKNOWN',
+        };
     }
     
     /**
      * run kaktus
+     * @return void
      **/
-    public function run()
+    public function run(): void
     {
+        $this->displayBanner();
+
         /**
          * f:   valeur requise
          * f::  valeur optionnelle // php 5.3 only
          * f    pas de valeur
          **/
-        $shortOpt = 'htl:o:f:d:';
+        $shortOpt = 'htl:o:f:d:e:';
         // $longOpt  = array('help', 'version'); PHP V5.3 only
         
-        $this->m_aArgs = getopt( $shortOpt /*, $longOpt*/ ) ;
-        $this->m_aArgs = $this->convertLogLevel($this->m_aArgs) ;
+        $this->m_aArgs = getopt( $shortOpt /*, $longOpt*/ );
+        $this->m_aArgs = $this->getConfigFromFile(self::CONFIG_FILE, $this->m_aArgs);
+        $this->m_aArgs = $this->convertLogLevel($this->m_aArgs);
         
         // Log file creation
         if (TRUE == isset($this->m_aArgs['o'])){
-            $this->createLogFile($this->m_aArgs['o']) ;
+            $this->createLogFile($this->m_aArgs['o']);
         }
+
+        // Option -f : audit one file
+        if (TRUE == isset($this->m_aArgs['f'])){
+            echo $this->auditFile($this->m_aArgs['f']);
+            echo $this->resume();
+        }        
+        // Option -d : audit one directory
+        else if (TRUE == isset($this->m_aArgs['d'])){
+            if (!empty($this->m_aArgs['e'])) {
+                if (is_string($this->m_aArgs['e'])) {
+                    $this->m_aArgs['e'] = explode(',', $this->m_aArgs['e']);
+                }
+                echo $this->auditDir($this->m_aArgs['d'], $this->m_aArgs['e']);
+            } else {
+                echo $this->auditDir($this->m_aArgs['d']);
+            }
+            echo $this->resume();
+        }        
+        // Display help 
+        else{
+            echo $this->callHelp();
+        } 
         
+        $this->log( "\n\n *******************************************************************\n\n" ) ;
+    }
+
+    /**
+     * Gets configuration from a ini file.
+     * 
+     * Overwrites command options.
+     * 
+     * @param string $p_sFilename name of the configuration file.
+     * @param array $p_aArgs options passed to the command line.
+     * 
+     * @return array options
+     */
+    protected function getConfigFromFile(string $p_sFilename, array $p_aArgs): array 
+    {
+        if (!file_exists($p_sFilename)) {
+            return $p_aArgs;
+        }
+
+        $this->log( "\n\n Configuration file used: '".$p_sFilename."'\n" );
+
+        $config = parse_ini_file($p_sFilename);
+
+        foreach (self::OPTIONS as $cli => $ini) {
+            if (!empty($config[$ini])) {
+                $p_aArgs[$cli] = $config[$ini];
+            }
+        }
+
+        return $p_aArgs;
+    }
+
+    /**
+     * Display the project banner
+     * @return void
+     **/
+    protected function displayBanner(): void
+    {
         $this->log( "\n ********************************************************************" );
         $this->log( "
    __   ___   ________   __   ___  __________   __    __   _________
@@ -504,26 +602,9 @@ class kaktus
                                                          by DiZagn.com
     ", self::CONSOLE) ;
         $this->log( "\n ".self::PROJECTTITLE." version : ".self::VERSION ." (".self::DATE.")");
-        $this->log( "\n ".self::PROJECTDESC) ;
-        
-        // Option -f : audit one file
-        if (TRUE == isset($this->m_aArgs['f'])){
-            echo $this->auditFile($this->m_aArgs['f']) ;
-            echo $this->resume() ;
-        }        
-        // Option -d : audit one directory
-        else if (TRUE == isset($this->m_aArgs['d'])){
-            echo $this->auditDir($this->m_aArgs['d']) ;
-            echo $this->resume() ;
-        }        
-        // Display help 
-        else{
-            echo $this->callHelp() ;
-        } 
-        
-        $this->log( "\n\n *******************************************************************\n\n" ) ;
+        $this->log( "\n ".self::PROJECTDESC);
     }
 }
 
-$kaktus = new kaktus() ;
-$kaktus->run() ;
+$kaktus = new kaktus();
+$kaktus->run();
