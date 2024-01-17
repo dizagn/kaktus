@@ -21,7 +21,7 @@ class kaktus
     // script version, date
     const VERSION           = '2.0';
     // script version, date
-    const DATE              = '2023-11';
+    const DATE              = '2024-01';
     
     // LOG OPTIONS
     // VERBOSE MODE
@@ -45,6 +45,21 @@ class kaktus
     const CNT_WARNING       = 7 ;
     const CNT_NOTICE        = 8 ;
     
+    // Configuration file
+    const CONFIG_FILE       = 'kaktus.ini';
+
+    // Availables options
+    const OPTIONS = [
+        // CLI option => Config option
+        'h' => '',
+        't' => 'tokenize',
+        'l' => 'level',
+        'o' => 'log',
+        'f' => 'file',
+        'd' => 'directory',
+        'e' => 'exclude',
+    ];
+
     // List of extension to parse
     protected $m_aExt = ['php','php3', 'php4', 'php5', 'inc','phtml'];
     // List des extensions trouvés 
@@ -136,11 +151,9 @@ class kaktus
      * Audit one file
      *
      * @param string $p_sFileName File name
-     * @param bool $p_bVerbose Verbose analyse when use in file context or less
-     * in directory context
      * @return void
      **/
-    protected function auditFile(string $p_sFileName, bool $p_bVerbose = TRUE): void
+    protected function auditFile(string $p_sFileName): void
     {
         // File exists ?
         if (FALSE == file_exists($p_sFileName)) {
@@ -154,7 +167,7 @@ class kaktus
             $this->add(self::CNT_UNREAD);
         }
         // Wrong extension file
-        else if ($this->getExt($p_sFileName) == FALSE) {
+        else if ($this->isValidExtension($p_sFileName) == FALSE) {
             $this->log( "\n Auditing file : ".$p_sFileName, self::LOG );
             $this->log( "\n    [ IGNOR ] Wrong file : " .$p_sFileName, self::LOG );
             $this->add(self::CNT_IGNOR);
@@ -186,9 +199,10 @@ class kaktus
      * Audit one directory
      *
      * @param string $p_sPath directory path to audit
+     * @param array $p_aExcludedDir list of directories not to be audited
      * @return void
      **/
-    protected function auditDir(string $p_sPath): void
+    protected function auditDir(string $p_sPath, array $p_aExcludedDir = []): void
     {
         $l_sPath = rtrim( $p_sPath, DIRECTORY_SEPARATOR);
         
@@ -199,16 +213,18 @@ class kaktus
             $this->log( "\n\033[41m [ ERROR ] Directory is not readable\033[0m\n" );
         }
         else {
-            $this->log( "\n\n Auditing directory : '".$l_sPath."'\n" );
-            $this->recReadDir( $l_sPath );
+            $this->log( "\n Auditing directory : '".$l_sPath."'\n" );
+            $this->log( " Excluded directories : ".( !empty($p_aExcludedDir) ? "'".implode(', ', $p_aExcludedDir)."'" : 'None') ."\n" );
+            $this->recReadDir( $l_sPath, $p_aExcludedDir );
         }
     }
     
     /**
      * Read and list directory content recursively
      * @param string $p_sPath directory path to audit
+     * @param array $p_aExcludedDir list of directories not to be audited
      **/
-    protected function recReadDir(string $p_sPath): void
+    protected function recReadDir(string $p_sPath, array $p_aExcludedDir = []): void
     {
         $l_hHd = opendir($p_sPath);
         if ($l_hHd === false) {
@@ -222,6 +238,10 @@ class kaktus
                 if ($l_sFile != '.' &&
                     $l_sFile != '..') {
                     $l_sPath = $p_sPath . DIRECTORY_SEPARATOR . $l_sFile;
+
+                    if (!empty($p_aExcludedDir) && in_array($l_sPath, $p_aExcludedDir)) {
+                        continue;
+                    }
 
                     if (true == is_dir($l_sPath)) {
                         $this->recReadDir($l_sPath);
@@ -240,7 +260,7 @@ class kaktus
      * @param $p_sFileName
      * @return bool TRUE / FALSE
      **/
-    protected function getExt(string $p_sFileName): bool
+    protected function isValidExtension(string $p_sFileName): bool
     {
         $ext = pathinfo(strtolower($p_sFileName), PATHINFO_EXTENSION);
         return in_array($ext, $this->m_aExt);
@@ -254,10 +274,12 @@ class kaktus
     {
         return "\n\n Usage : kaktus [options] \n"
             . "\n Example 1 : kaktus -o log.txt -l critical -f test.php"
-            . "\n Example 2 : kaktus -o log.txt -l notice -d ../my_directory \n"
+            . "\n Example 2 : kaktus -o log.txt -l notice -d ../my_directory"
+            . "\n Example 3 : kaktus -o log.txt -l notice -d ../my_directory -e /vendor,/tests \n"
             . "\n -h --help \t\t\t Display this help"
             . "\n -f --file [filename]\t\t Audit one given file"
             . "\n -d --dir [/path/to/directory]\t Audit all files from directory recursively"
+            . "\n -e --exclude [/path1,/path2...] List of directories to be excluded from the audit"
             . "\n -t --token\t\t\t Token analysis, more complete but more longer"
             . "\n -o --output [log_filename]\t Log script output into a logfile"
             . "\n -l --log [critical / warning / notice]\t Log level";
@@ -365,13 +387,13 @@ class kaktus
     */
     protected function _getInput(): string
     {
-        $fp = fopen('php://stdin', 'r');
-        if (FALSE == $fp) {
+        $filePointer = fopen('php://stdin', 'r');
+        if (FALSE == $filePointer) {
             throw new \Exception("Unable to open standard input");
         }
 
-        $input = strtoupper(fgets($fp, 255));
-        fclose($fp);
+        $input = strtoupper(fgets($filePointer, 255));
+        fclose($filePointer);
         return trim($input);
     }
     
@@ -489,23 +511,24 @@ class kaktus
      **/
     public function run(): void
     {
+        $this->displayBanner();
+
         /**
          * f:   valeur requise
          * f::  valeur optionnelle // php 5.3 only
          * f    pas de valeur
          **/
-        $shortOpt = 'htl:o:f:d:';
+        $shortOpt = 'htl:o:f:d:e:';
         // $longOpt  = array('help', 'version'); PHP V5.3 only
         
         $this->m_aArgs = getopt( $shortOpt /*, $longOpt*/ );
+        $this->m_aArgs = $this->getConfigFromFile(self::CONFIG_FILE, $this->m_aArgs);
         $this->m_aArgs = $this->convertLogLevel($this->m_aArgs);
         
         // Log file creation
         if (TRUE == isset($this->m_aArgs['o'])){
             $this->createLogFile($this->m_aArgs['o']);
         }
-
-        $this->displayBanner();
 
         // Option -f : audit one file
         if (TRUE == isset($this->m_aArgs['f'])){
@@ -514,7 +537,14 @@ class kaktus
         }        
         // Option -d : audit one directory
         else if (TRUE == isset($this->m_aArgs['d'])){
-            echo $this->auditDir($this->m_aArgs['d']);
+            if (!empty($this->m_aArgs['e'])) {
+                if (is_string($this->m_aArgs['e'])) {
+                    $this->m_aArgs['e'] = explode(',', $this->m_aArgs['e']);
+                }
+                echo $this->auditDir($this->m_aArgs['d'], $this->m_aArgs['e']);
+            } else {
+                echo $this->auditDir($this->m_aArgs['d']);
+            }
             echo $this->resume();
         }        
         // Display help 
@@ -523,6 +553,35 @@ class kaktus
         } 
         
         $this->log( "\n\n *******************************************************************\n\n" ) ;
+    }
+
+    /**
+     * Gets configuration from a ini file.
+     * 
+     * Overwrites command options.
+     * 
+     * @param string $p_sFilename name of the configuration file.
+     * @param array $p_aArgs options passed to the command line.
+     * 
+     * @return array options
+     */
+    protected function getConfigFromFile(string $p_sFilename, array $p_aArgs): array 
+    {
+        if (!file_exists($p_sFilename)) {
+            return $p_aArgs;
+        }
+
+        $this->log( "\n\n Configuration file used: '".$p_sFilename."'\n" );
+
+        $config = parse_ini_file($p_sFilename);
+
+        foreach (self::OPTIONS as $cli => $ini) {
+            if (!empty($config[$ini])) {
+                $p_aArgs[$cli] = $config[$ini];
+            }
+        }
+
+        return $p_aArgs;
     }
 
     /**
